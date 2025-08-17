@@ -34,3 +34,6 @@ build/
 .vscode/
 
 .flattened-pom.xml
+
+genie-backend_startup.log
+genie-backend_startup.log.err
