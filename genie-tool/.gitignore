@@ -212,3 +212,6 @@ __marimo__/
 .joycode/
 ./vscode/
 
+*.db
+
+file_db_dir/

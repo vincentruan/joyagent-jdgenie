@@ -76,6 +76,15 @@ mcp_client_url: "http://127.0.0.1:8188"
 配置完后重新编译
 
 
+重新加密密钥
+```sh
+cd genie-backend && \
+mvn jasypt:encrypt \
+-Djasypt.encryptor.public-key-format="pem" \
+-Djasypt.encryptor.public-key-location="file:src/main/resources/crypt_key/public_key.pem" \
+-Djasypt.plugin.path="file:src/main/resources/application.yml"
+```
+
 ## 贡献指南
 
 我们欢迎所有形式的贡献，包括但不限于：

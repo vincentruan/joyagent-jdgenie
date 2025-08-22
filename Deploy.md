@@ -53,15 +53,19 @@ sh start.sh
 
 启动后，可以通过命令tail -f genie-backend_startup.log观察日志情况。
 
-ps 1: 可以动态适合自己key,编辑 joyagent-jdgenie/genie-backend/src/main/resources/application.yml,其中配置是可以添加多个模型，然后在不同模块下可以指定，比如在react模式下，我指定了claude-3-7-sonnet-v1，建议修改为适合自己的模型名字。
-settings: '{"claude-3-7-sonnet-v1": {
-        "model": "claude-3-7-sonnet-v1",
-        "max_tokens": 8192,
-        "temperature": 0,
-        "base_url": "<input llm server here>",
-        "apikey": "<input llm key here>",
-        "max_input_tokens": 128000
-}}'
+ps 1: 可以动态适合自己key,编辑 joyagent-jdgenie/genie-backend/src/main/resources/application.yml，其中配置可以添加多个模型，然后在不同模块下可以指定，比如在react模式下，我指定了claude-3-7-sonnet-v1，建议修改为适合自己的模型名字。使用原生YAML Map方式配置：
+
+```yaml
+llm:
+  settings:
+    claude-3-7-sonnet-v1:
+      model: claude-3-7-sonnet-v1
+      max_tokens: 8192
+      temperature: 0
+      base_url: <input llm server here>
+      apikey: <input llm key here>
+      max_input_tokens: 128000
+```
 
 ps 2:修改完配置后，重新build.sh,然后start.sh
 
@@ -75,7 +79,6 @@ ps 2:修改完配置后，重新build.sh,然后start.sh
 ```
 cd joyagent-jdgenie/genie-tool
 pip install uv
-cd genie-tool
 uv sync
 source .venv/bin/activate
 ```

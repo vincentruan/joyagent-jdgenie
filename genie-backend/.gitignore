@@ -37,3 +37,6 @@ build/
 
 genie-backend_startup.log
 genie-backend_startup.log.err
+
+# RSA keys used by Jasypt (do not commit)
+src/main/resources/crypt_key/

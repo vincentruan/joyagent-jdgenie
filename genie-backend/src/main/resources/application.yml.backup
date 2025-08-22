@@ -11,36 +11,23 @@ logging:
 jasypt:
   encryptor:
     # use asymmetric RSA with PEM private key for decryption
-    algorithm: PBEWITHHMACSHA512ANDAES_256
     private-key-format: PEM
     private-key-location: classpath:crypt_key/private_key.pem
-    public-key-location: classpath:crypt_key/public_key.pem
 llm:
   default:
-    model: "gemini-2.5-pro"
-    max_tokens: 8192
-    temperature: 0.8
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai
-    apikey: 'ENC(CEUx5ezBHOWqTFKrhh/8D+FggGaqXzTm6ziEFLRbTZbsaXMxrKXRjR5yPMEUM3sMd7JIX5R9xNuAbeO4dNTqFh2Oj3ilA0fquFBs/Czuc8T6Vk0F6IXbVwPo9BNKqZ5zOjwEiuZHMpovyx1O8rf1Y2cnCZMtfxPMoF4htMiiPnCSGXAmDJ+1vpmB8pjzV1l0ratqteAfYXiLiv6W7EmHB6Qwz/7D1r8xWLIJPapE0nMiaSpRQLWpGamyZFZ983D1qsTxPnyFyQdV5vLNa7HVLc/M9TUZNN1TRa274BmSPpBf4VSnsZedP08Rno7InNUqKxD3RAipB33DXl3ba0cLUV3kG7A2jMaHyea6Wb2iUpCw+rGcKL+CQSECVotpzqqMSD0i3//GhaahZEOrwYsY9Fuf8kj3Ce3xLH+qnVSRie0tu3broCuxM3cj6WeQ1OW3VWMV1MTD1BDmsDQf6Eh5wOc/PYv54AFi3uJbarp5F4Qbw7wNrEZkA92JZYjTUr/sAt3UeuNMZgxDdYAQCnUqwX5ws/lD6mQfGZbGjL00Xbmrz1u0RmXQxtlroRxA3p+Kcm/KqXa1jprrl2/Fa2MCqTrn4CmK4FEZwHETd6uBaio8sJGoBJQNR19rY+3RpZxYZSEPmTfbutKNY1/rDSQp4aZfFYl0GYiHszRh/mE1+iY=)'
+    base_url: 'https://api.deepseek.com'
+    apikey: 'ENC(PLACEHOLDER_DEEPSEEK_APIKEY)'
     interface_url: '/chat/completions'
-    max_input_tokens: 1048576
+    model: deepseek-reasoner
+    max_tokens: 8192
   settings:
-    # do not use . on map key, use - _ instead
-    gemini-2-5-flash:
-      model: "gemini-2.5-flash"
+    gemini-2.5-flash:
+      model: gemini-2.5-flash
       max_tokens: 8192
-      temperature: 0.8
-      base_url: https://generativelanguage.googleapis.com/v1beta/openai
-      apikey: 'ENC(CEUx5ezBHOWqTFKrhh/8D+FggGaqXzTm6ziEFLRbTZbsaXMxrKXRjR5yPMEUM3sMd7JIX5R9xNuAbeO4dNTqFh2Oj3ilA0fquFBs/Czuc8T6Vk0F6IXbVwPo9BNKqZ5zOjwEiuZHMpovyx1O8rf1Y2cnCZMtfxPMoF4htMiiPnCSGXAmDJ+1vpmB8pjzV1l0ratqteAfYXiLiv6W7EmHB6Qwz/7D1r8xWLIJPapE0nMiaSpRQLWpGamyZFZ983D1qsTxPnyFyQdV5vLNa7HVLc/M9TUZNN1TRa274BmSPpBf4VSnsZedP08Rno7InNUqKxD3RAipB33DXl3ba0cLUV3kG7A2jMaHyea6Wb2iUpCw+rGcKL+CQSECVotpzqqMSD0i3//GhaahZEOrwYsY9Fuf8kj3Ce3xLH+qnVSRie0tu3broCuxM3cj6WeQ1OW3VWMV1MTD1BDmsDQf6Eh5wOc/PYv54AFi3uJbarp5F4Qbw7wNrEZkA92JZYjTUr/sAt3UeuNMZgxDdYAQCnUqwX5ws/lD6mQfGZbGjL00Xbmrz1u0RmXQxtlroRxA3p+Kcm/KqXa1jprrl2/Fa2MCqTrn4CmK4FEZwHETd6uBaio8sJGoBJQNR19rY+3RpZxYZSEPmTfbutKNY1/rDSQp4aZfFYl0GYiHszRh/mE1+iY=)'
-      interface_url: '/chat/completions'
-      max_input_tokens: 1048576
-    deepseek-reason:
-      base_url: 'https://api.deepseek.com/v1'
-      apikey: 'ENC(LQXu1qvdtfg10Dk18KxfKhxsZnpqsltRhPib4/FHscmNYYjciXVDoZnGf9hpBr02UsXg5COWYGFCo5AGb9q+v5rQpmBK63qQcafzL1rXYNcRk6BEi3rxxhgtcnQ3WlXlIxRiw5rzSqhTop0UkYLEbQWDgcMmowwVBOfWITtceyucBpEV4XEYc+In1GjkdHX4bBiBnmXfUFkR6utLfN+9gqyytpOHCpZj0EPv0wHPfKNUidoAMUnf2czKTuPVzp4HJJul6scpp1xiqEjua/s5nvPt0T+aTutmQu5s92CiKrATJfPnYWfOKvbb3eg3KcfJVC8C+VeUu1mtehmiHWjvVYsi/H70iCRQ6JdIxIqE0nVjGO/3IvFPD3s6eIHJPyt4o66+TKnBLNCG5iYRBk+0Jo56a3NveNtia23fAFzFhK7CBMopd3y18FVaQQbfQKgJbU5vs3Duv03ZDLuoVwCkpAzmWMLSSmykPkQW2NyYfY38RXSKp0IdONUtyVVmfdInbEfrMETwNRWZMSGoZW5FRCuodCDuqHOYr7/g/vFSsQc+K/IHym9PmmhbEvy69a5xbpPE8eGL7PzAeagbte2PLZCSBComyOI8vQR5bTeTtICWdz/7AchkFXRs7/9zCWtPffMbZssbatupDVO5oVDyu33dVoZHVtXCIWvEjIQubAo=)'
-      interface_url: '/chat/completions'
-      model: deepseek-reasoner
-      max_tokens: 8192
-      temperature: 0.7
+      temperature: 0
+      base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+      apikey: 'ENC(PLACEHOLDER_GEMINI_APIKEY)'
+      interface_url: /chat/completions
       max_input_tokens: 1048576
 
 autobots:

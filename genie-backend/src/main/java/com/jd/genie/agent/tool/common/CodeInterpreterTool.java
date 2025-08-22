@@ -103,8 +103,8 @@ public class CodeInterpreterTool implements BaseTool {
             GenieConfig genieConfig = applicationContext.getBean(GenieConfig.class);
             String url = genieConfig.getCodeInterpreterUrl() + "/v1/tool/code_interpreter";
             RequestBody body = RequestBody.create(
-                    MediaType.parse("application/json"),
-                    JSONObject.toJSONString(codeRequest)
+                JSONObject.toJSONString(codeRequest),
+                MediaType.parse("application/json")
             );
 
             log.info("{} code_interpreter request {}", agentContext.getRequestId(), JSONObject.toJSONString(codeRequest));

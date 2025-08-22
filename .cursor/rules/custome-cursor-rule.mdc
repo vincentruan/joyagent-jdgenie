@@ -1,0 +1,4 @@
+---
+alwaysApply: true
+---
+1. 生成的描述性markdown文件，除了README.md允许放在项目根目录或者对应的子模块目录下外，其余md文件都放在项目根目录的docs文件夹下

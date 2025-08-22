@@ -31,6 +31,10 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,6 +46,11 @@ import java.util.regex.Pattern;
 @Data
 public class LLM {
     private static final Map<String, LLM> instances = new ConcurrentHashMap<>();
+    private static final ScheduledExecutorService RETRY_SCHEDULER = Executors.newScheduledThreadPool(1, r -> {
+        Thread t = new Thread(r, "llm-retry-scheduler");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final String model;
     private final String llmErp;
@@ -241,25 +250,8 @@ public class LLM {
             if (!stream) {
                 params.put("stream", false);
 
-                // 调用 API
-                CompletableFuture<String> future = callOpenAI(params);
-
-                return future.thenApply(response -> {
-                    try {
-                        // 解析响应
-                        log.info("{} call llm response {}", context.getRequestId(), response);
-                        JsonNode jsonResponse = objectMapper.readTree(response);
-                        JsonNode choices = jsonResponse.get("choices");
-
-                        if (choices == null || choices.isEmpty() || choices.get(0).get("message").get("content") == null) {
-                            throw new IllegalArgumentException("Empty or invalid response from LLM");
-                        }
-
-                        return choices.get(0).get("message").get("content").asText();
-                    } catch (IOException e) {
-                        throw new CompletionException(e);
-                    }
-                });
+                // 调用 API 并处理重试
+                return callOpenAIWithResponseRetry(context, params);
             } else {
                 // 处理流式请求
                 params.put("stream", true);
@@ -566,45 +558,200 @@ public class LLM {
                     .build();
 
             String apiEndpoint = baseUrl + interfaceUrl;
+            String jsonPayload = objectMapper.writeValueAsString(params);
 
-            RequestBody body = RequestBody.create(
-                    MediaType.parse("application/json"),
-                    objectMapper.writeValueAsString(params)
-            );
-
-            Request.Builder requestBuilder = new Request.Builder()
-                    .url(apiEndpoint)
-                    .post(body);
-
-            // 添加适当的认证头
-            requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
-
-            Request request = requestBuilder.build();
-
-            client.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    future.completeExceptionally(e);
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    try (ResponseBody responseBody = response.body()) {
-                        if (!response.isSuccessful()) {
-                            future.completeExceptionally(
-                                    new IOException("Unexpected response code: " + response)
-                            );
-                        } else {
-                            future.complete(responseBody.string());
-                        }
-                    }
-                }
-            });
+            // 使用指数退避的重试
+            int maxRetries = 5; // 包含首发在内最多尝试 6 次（attempt 0..5）
+            executeWithRetry(client, apiEndpoint, jsonPayload, future, 0, maxRetries);
         } catch (Exception e) {
             future.completeExceptionally(e);
         }
 
         return future;
+    }
+
+    private CompletableFuture<String> callOpenAIWithResponseRetry(AgentContext context, Map<String, Object> params) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        int maxRetries = 3; // 响应重试最多3次
+        executeResponseRetry(context, params, future, 0, maxRetries);
+        return future;
+    }
+
+    private void executeResponseRetry(AgentContext context, 
+                                    Map<String, Object> params, 
+                                    CompletableFuture<String> future, 
+                                    int attempt, 
+                                    int maxRetries) {
+        if (future.isDone()) {
+            return;
+        }
+
+        callOpenAI(params).thenAccept(response -> {
+            try {
+                // 解析响应
+                log.info("{} call llm response attempt {}: {}", context.getRequestId(), attempt, response);
+                JsonNode jsonResponse = objectMapper.readTree(response);
+                JsonNode choices = jsonResponse.get("choices");
+
+                if (choices == null || choices.isEmpty()) {
+                    throw new IllegalArgumentException("Empty or invalid response from LLM");
+                }
+                
+                JsonNode message = choices.get(0).get("message");
+                if (message == null || message.get("content") == null) {
+                    throw new IllegalArgumentException("Empty or invalid response from LLM");
+                }
+                
+                String content = message.get("content").asText();
+                if (content == null || content.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Empty content in LLM response");
+                }
+
+                future.complete(content);
+            } catch (Exception e) {
+                if (shouldRetryOnException(e, attempt, maxRetries)) {
+                    long delayMs = computeBackoffMillis(attempt, null);
+                    log.warn("{} call llm response attempt {} failed, scheduling retry in {} ms: {}", 
+                            context.getRequestId(), attempt, delayMs, e.getMessage());
+                    RETRY_SCHEDULER.schedule(() -> 
+                        executeResponseRetry(context, params, future, attempt + 1, maxRetries), 
+                        delayMs, TimeUnit.MILLISECONDS);
+                } else {
+                    log.error("{} call llm response attempt {} failed, no more retries: {}", 
+                            context.getRequestId(), attempt, e.getMessage());
+                    future.completeExceptionally(e);
+                }
+            }
+        }).exceptionally(throwable -> {
+            if (shouldRetryOnException(throwable, attempt, maxRetries)) {
+                long delayMs = computeBackoffMillis(attempt, null);
+                log.warn("{} call llm request attempt {} failed, scheduling retry in {} ms: {}", 
+                        context.getRequestId(), attempt, delayMs, throwable.getMessage());
+                RETRY_SCHEDULER.schedule(() -> 
+                    executeResponseRetry(context, params, future, attempt + 1, maxRetries), 
+                    delayMs, TimeUnit.MILLISECONDS);
+            } else {
+                log.error("{} call llm request attempt {} failed, no more retries: {}", 
+                        context.getRequestId(), attempt, throwable.getMessage());
+                future.completeExceptionally(throwable);
+            }
+            return null;
+        });
+    }
+
+    private void executeWithRetry(OkHttpClient client,
+                                   String apiEndpoint,
+                                   String jsonPayload,
+                                   CompletableFuture<String> future,
+                                   int attempt,
+                                   int maxRetries) {
+        if (future.isDone()) {
+            return;
+        }
+
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json"),
+                jsonPayload
+        );
+        Request request = new Request.Builder()
+                .url(apiEndpoint)
+                .post(body)
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                if (shouldRetry(null, e, attempt, maxRetries)) {
+                    long delayMs = computeBackoffMillis(attempt, null);
+                    log.warn("callOpenAI attempt {} failed due to IOException, scheduling retry in {} ms: {}", attempt, delayMs, e.toString());
+                    RETRY_SCHEDULER.schedule(() -> executeWithRetry(client, apiEndpoint, jsonPayload, future, attempt + 1, maxRetries), delayMs, TimeUnit.MILLISECONDS);
+                } else {
+                    future.completeExceptionally(e);
+                }
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                try (ResponseBody responseBody = response.body()) {
+                    if (!response.isSuccessful()) {
+                        if (shouldRetry(response, null, attempt, maxRetries)) {
+                            String retryAfterHeader = response.header("Retry-After");
+                            long delayMs = computeBackoffMillis(attempt, retryAfterHeader);
+                            log.warn("callOpenAI attempt {} received non-2xx ({}), scheduling retry in {} ms", attempt, response.code(), delayMs);
+                            RETRY_SCHEDULER.schedule(() -> executeWithRetry(client, apiEndpoint, jsonPayload, future, attempt + 1, maxRetries), delayMs, TimeUnit.MILLISECONDS);
+                        } else {
+                            future.completeExceptionally(new IOException("Unexpected response code: " + response));
+                        }
+                    } else {
+                        future.complete(responseBody != null ? responseBody.string() : "");
+                    }
+                }
+            }
+        });
+    }
+
+    private boolean shouldRetry(Response response, IOException exception, int attempt, int maxRetries) {
+        if (attempt >= maxRetries) {
+            return false;
+        }
+        if (exception != null) {
+            // 网络IO异常（如超时、连接复位等）默认重试
+            return true;
+        }
+        if (response != null) {
+            int code = response.code();
+            if (code == 429 || code == 408 || (code >= 500 && code <= 599)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    private boolean shouldRetryOnException(Throwable exception, int attempt, int maxRetries) {
+        if (attempt >= maxRetries) {
+            return false;
+        }
+        
+        // 重试空响应或无效响应
+        if (exception instanceof IllegalArgumentException) {
+            String message = exception.getMessage();
+            return message != null && (message.contains("Empty or invalid response") || 
+                                      message.contains("Empty content in LLM response"));
+        }
+        
+        // 重试网络相关异常
+        if (exception instanceof IOException || exception instanceof java.net.SocketTimeoutException) {
+            return true;
+        }
+        
+        // 重试执行异常（包装的异常）
+        if (exception instanceof ExecutionException) {
+            return shouldRetryOnException(exception.getCause(), attempt, maxRetries);
+        }
+        
+        return false;
+    }
+
+    private long computeBackoffMillis(int attempt, String retryAfterHeader) {
+        // 基础退避 500ms，最大 10s，指数退避并加入抖动
+        long baseMs = 500L;
+        long maxMs = 10_000L;
+        long exp = baseMs * (1L << Math.min(attempt, 6)); // 限制位移，避免溢出
+        long cap = Math.min(exp, maxMs);
+        long jittered = ThreadLocalRandom.current().nextLong(cap + 1); // [0, cap]
+
+        long retryAfterMs = 0L;
+        if (retryAfterHeader != null) {
+            try {
+                // Retry-After 可能是秒或日期，这里先按秒尝试
+                long seconds = Long.parseLong(retryAfterHeader.trim());
+                retryAfterMs = seconds * 1000L;
+            } catch (NumberFormatException ignore) {
+                // 忽略日期解析，维持指数退避
+            }
+        }
+        return Math.max(jittered, retryAfterMs);
     }
 
     /**
